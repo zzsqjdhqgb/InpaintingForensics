@@ -1,1 +1,5 @@
 data/
+DiverseInpaintingDataset.zip
+IIDNet_TrainData_GC_Places.tar.gz
+IIDNet_TrainData_GC_Dresden.tar.gz
+training_log.csv
