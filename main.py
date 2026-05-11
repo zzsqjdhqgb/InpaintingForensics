@@ -14,6 +14,8 @@ import cv2
 from glob import glob
 
 os.environ["KERAS_BACKEND"] = "jax"
+os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.8"   # 最多占用 80% 显存
+os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"  # 按需分配而非预分配全部
 
 import keras
 from keras import layers, Model, ops, constraints
@@ -37,7 +39,7 @@ TEST_DIR  = os.path.join(DATA_DIR, "test_images")
 # 训练超参数
 NUM_TRAIN = 48000
 NUM_VAL   = 1000
-BATCH_SIZE = 2          # 根据显存调整，JAX 会自动分配
+BATCH_SIZE = 1          # 根据显存调整，JAX 会自动分配
 EPOCHS = 1000
 INIT_LR = 1e-4
 # ================================================
@@ -591,14 +593,25 @@ class IIDPyDataset(PyDataset):
 
 # =================== 6. 训练主流程 ===================
 def train():
+    # 定义图像尺寸，必须与数据集的 resize 尺寸一致
+    image_size = (256, 256)
+
     # 若数据列表不存在，则自动准备数据集
     if not (os.path.exists(TRAIN_TXT) and os.path.exists(VAL_TXT)):
         prepare_dataset()
 
-    train_dataset = IIDPyDataset(TRAIN_TXT, batch_size=BATCH_SIZE, shuffle=True, choice='train')
-    val_dataset   = IIDPyDataset(VAL_TXT, batch_size=1, shuffle=False, choice='val')
+    train_dataset = IIDPyDataset(TRAIN_TXT, batch_size=BATCH_SIZE,
+                                 image_size=image_size, shuffle=True, choice='train')
+    val_dataset   = IIDPyDataset(VAL_TXT, batch_size=1,
+                                 image_size=image_size, shuffle=False, choice='val')
 
     model = IIDNet()
+
+    # 显式构建模型（触发变量创建）
+    dummy_input = np.zeros((1, image_size[0], image_size[1], 3), dtype='float32')
+    model(dummy_input)
+    model.summary()
+
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=INIT_LR, beta_1=0.9, beta_2=0.999),
         loss=joint_focal_bce_loss,
